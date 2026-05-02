@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>가계부 대시보드</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f3; color: #1a1a1a; padding: 24px; }
+  h1 { font-size: 20px; font-weight: 500; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: #888; margin-bottom: 20px; }
+  .source-link { font-size: 12px; color: #378ADD; text-decoration: none; }
+  .source-link:hover { text-decoration: underline; }
+
+  .tabs { display: flex; gap: 6px; margin-bottom: 20px; }
+  .tab { padding: 6px 18px; border-radius: 8px; border: 1px solid #ddd; background: #fff; cursor: pointer; font-size: 13px; color: #666; }
+  .tab.on { background: #1a1a1a; color: #fff; border-color: #1a1a1a; font-weight: 500; }
+  .badge { font-size: 10px; background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 4px; margin-left: 4px; }
+
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .card { background: #fff; border-radius: 12px; padding: 16px 18px; border: 1px solid #eee; }
+  .card-label { font-size: 11px; color: #999; margin-bottom: 6px; }
+  .card-value { font-size: 22px; font-weight: 600; }
+  .card-value.income { color: #185FA5; }
+  .card-value.expense { color: #A32D2D; }
+  .card-value.saving { color: #3B6D11; }
+  .card-value.balance-pos { color: #3B6D11; }
+  .card-value.balance-neg { color: #A32D2D; }
+
+  .charts-row { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .chart-box { background: #fff; border-radius: 12px; padding: 18px 20px; border: 1px solid #eee; }
+  .chart-title { font-size: 13px; color: #666; font-weight: 500; margin-bottom: 14px; }
+
+  .cat-list { margin-top: 10px; }
+  .cat-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+  .cat-item:last-child { border-bottom: none; }
+  .cat-name { display: flex; align-items: center; gap: 7px; color: #555; }
+  .dot { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+  .cat-val { font-weight: 600; color: #1a1a1a; }
+  .cat-pct { font-size: 11px; color: #aaa; margin-left: 4px; font-weight: 400; }
+
+  .txn-box { background: #fff; border-radius: 12px; padding: 18px 20px; border: 1px solid #eee; margin-bottom: 20px; }
+  .txn-title { font-size: 13px; color: #666; font-weight: 500; margin-bottom: 12px; }
+  .txn-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .txn-table th { text-align: left; color: #999; font-weight: 500; padding: 6px 8px; border-bottom: 1px solid #eee; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .txn-table td { padding: 8px 8px; border-bottom: 1px solid #f5f5f5; }
+  .txn-table tr:last-child td { border-bottom: none; }
+  .type-income { color: #185FA5; font-weight: 600; }
+  .type-expense { color: #A32D2D; }
+  .type-saving { color: #3B6D11; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+  .leg-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #888; }
+
+  @media (max-width: 700px) {
+    .cards { grid-template-columns: repeat(2, 1fr); }
+    .charts-row { grid-template-columns: 1fr; }
+    body { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>가계부 대시보드</h1>
+<p class="subtitle">
+  Google Drive 연동 · 마지막 업데이트: 2026-06-09 &nbsp;|&nbsp;
+  <a class="source-link" href="https://docs.google.com/spreadsheets/d/1Gcpj3ZE9AOIV6unCWzchqg3mW8QwyK5mdYqmzy44TWs/edit" target="_blank">원본 스프레드시트 열기 ↗</a>
+</p>
+
+<div class="tabs">
+  <button class="tab on" onclick="sel(0,this)">5월</button>
+  <button class="tab" onclick="sel(1,this)">6월 <span class="badge">1~9일 부분</span></button>
+</div>
+
+<div class="cards" id="cards"></div>
+
+<div class="charts-row">
+  <div class="chart-box">
+    <div class="chart-title">일별 지출 추이</div>
+    <div class="legend">
+      <span class="leg-item"><span class="dot" style="background:#378ADD"></span>10만 미만</span>
+      <span class="leg-item"><span class="dot" style="background:#EF9F27"></span>10~20만</span>
+      <span class="leg-item"><span class="dot" style="background:#E24B4A"></span>20만 이상</span>
+    </div>
+    <div style="position:relative;width:100%;height:240px">
+      <canvas id="bc"></canvas>
+    </div>
+  </div>
+  <div class="chart-box">
+    <div class="chart-title">카테고리별 지출</div>
+    <div style="position:relative;width:100%;height:160px">
+      <canvas id="dc"></canvas>
+    </div>
+    <div class="cat-list" id="catlist"></div>
+  </div>
+</div>
+
+<div class="txn-box">
+  <div class="txn-title">거래 내역 <span id="txn-count" style="color:#bbb;font-weight:400"></span></div>
+  <div style="max-height:320px;overflow-y:auto">
+    <table class="txn-table">
+      <thead>
+        <tr>
+          <th>날짜</th>
+          <th>구분</th>
+          <th>분류</th>
+          <th>항목</th>
+          <th style="text-align:right">금액</th>
+          <th>결제수단</th>
+        </tr>
+      </thead>
+      <tbody id="txn-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const TX = [
+  ['2026-05-01','수입','주급여','5월 급여',4500000,'주거래은행'],
+  ['2026-05-01','지출','주거','월세',750000,'계좌이체'],
+  ['2026-05-01','지출','통신','휴대폰 요금',89000,'자동이체'],
+  ['2026-05-01','지출','보험','실손보험',35000,'자동이체'],
+  ['2026-05-02','지출','식비','마트 장보기',62400,'체크카드'],
+  ['2026-05-02','지출','식비','배달 음식',28000,'신용카드'],
+  ['2026-05-03','지출','교통','주유비',75000,'신용카드'],
+  ['2026-05-03','지출','여가','영화 관람',15000,'신용카드'],
+  ['2026-05-04','지출','식비','점심 식사',12000,'체크카드'],
+  ['2026-05-04','지출','식비','편의점',4500,'체크카드'],
+  ['2026-05-05','지출','생활','세탁 세제',18900,'신용카드'],
+  ['2026-05-05','지출','여가','전시회 티켓',20000,'체크카드'],
+  ['2026-05-06','지출','식비','저녁 외식',45000,'신용카드'],
+  ['2026-05-07','지출','식비','카페',5500,'체크카드'],
+  ['2026-05-08','지출','경조사','어버이날 선물',150000,'계좌이체'],
+  ['2026-05-09','지출','식비','베이커리',12400,'체크카드'],
+  ['2026-05-10','지출','의료','비타민 구매',32000,'신용카드'],
+  ['2026-05-11','지출','식비','점심 식사',11000,'체크카드'],
+  ['2026-05-12','수입','기타','중고거래',25000,'현금'],
+  ['2026-05-12','지출','교통','택시비',12500,'신용카드'],
+  ['2026-05-13','지출','식비','점심 도시락',8500,'체크카드'],
+  ['2026-05-14','지출','자기계발','도서 구매',18000,'신용카드'],
+  ['2026-05-15','지출','경조사','축의금',50000,'계좌이체'],
+  ['2026-05-16','지출','생활','미용실',25000,'체크카드'],
+  ['2026-05-17','지출','식비','대형마트 장보기',115000,'신용카드'],
+  ['2026-05-18','지출','식비','카페',6000,'체크카드'],
+  ['2026-05-19','수입','금융','이자 수입',12400,'주거래은행'],
+  ['2026-05-20','지출','주거','관리비',185000,'자동이체'],
+  ['2026-05-21','지출','식비','점심 식사',13000,'체크카드'],
+  ['2026-05-22','지출','의료','약국',5000,'체크카드'],
+  ['2026-05-23','지출','여가','원데이 클래스',60000,'신용카드'],
+  ['2026-05-24','지출','교통','하이패스 충전',50000,'자동이체'],
+  ['2026-05-25','지출','식비','저녁 외식',38000,'신용카드'],
+  ['2026-05-26','지출','식비','점심 식사',10000,'체크카드'],
+  ['2026-05-27','지출','자기계발','온라인 강의',29000,'신용카드'],
+  ['2026-05-28','수입','사업','부수입',200000,'주거래은행'],
+  ['2026-05-28','지출','식비','카페',4500,'체크카드'],
+  ['2026-05-29','지출','생활','화장품',42000,'신용카드'],
+  ['2026-05-30','지출','식비','편의점',3200,'체크카드'],
+  ['2026-05-31','지출','저축','정기적금',1000000,'자동이체'],
+  ['2026-06-01','지출','식비','점심 식사',12000,'신용카드'],
+  ['2026-06-02','지출','교통','대중교통',55400,'신용카드'],
+  ['2026-06-02','지출','생활','건전지 구매',8000,'체크카드'],
+  ['2026-06-03','지출','식비','카페',5000,'체크카드'],
+  ['2026-06-04','지출','여가','OTT 구독',17000,'신용카드'],
+  ['2026-06-05','수입','기타','포인트 전환',5400,'체크카드'],
+  ['2026-06-06','지출','식비','마트 장보기',45600,'신용카드'],
+  ['2026-06-07','지출','의료','치과 검진',15000,'신용카드'],
+  ['2026-06-08','지출','식비','점심 식사',11000,'체크카드'],
+  ['2026-06-09','지출','생활','쓰레기 봉투',10500,'현금'],
+];
+
+const COLORS = {
+  '식비':'#EF9F27','주거':'#378ADD','교통':'#1D9E75','저축':'#639922',
+  '경조사':'#D4537E','여가':'#D85A30','생활':'#7F77DD','통신':'#888780',
+  '자기계발':'#185FA5','의료':'#E24B4A','보험':'#B4B2A9','기타':'#73726c'
+};
+
+let barC = null, donutC = null;
+
+function fmtFull(n){ return n.toLocaleString('ko-KR') + '원'; }
+function fmtShort(n){ return n >= 10000 ? Math.round(n/10000).toLocaleString('ko-KR')+'만원' : n.toLocaleString('ko-KR')+'원'; }
+
+function getRows(mi){
+  const prefix = mi === 0 ? '2026-05' : '2026-06';
+  return TX.filter(r => r[0].startsWith(prefix));
+}
+
+function compute(rows){
+  let income=0, expense=0, saving=0;
+  const byDay={}, byCat={};
+  for(const r of rows){
+    if(r[1]==='수입'){ income+=r[4]; continue; }
+    expense += r[4];
+    if(r[2]==='저축'){ saving+=r[4]; continue; }
+    const day = parseInt(r[0].split('-')[2]);
+    byDay[day] = (byDay[day]||0) + r[4];
+    byCat[r[2]] = (byCat[r[2]]||0) + r[4];
+  }
+  return { income, expense, saving, byDay, byCat, balance: income-expense };
+}
+
+function renderCards(d, mi){
+  const partial = mi === 1;
+  document.getElementById('cards').innerHTML = `
+    <div class="card"><div class="card-label">총 수입${partial?' (부분)':''}</div><div class="card-value income">${fmtFull(d.income)}</div></div>
+    <div class="card"><div class="card-label">총 지출${partial?' (부분)':''}</div><div class="card-value expense">${fmtFull(d.expense)}</div></div>
+    <div class="card"><div class="card-label">저축</div><div class="card-value saving">${fmtFull(d.saving)}</div></div>
+    <div class="card"><div class="card-label">잔액${partial?' (부분)':''}</div><div class="card-value ${d.balance>=0?'balance-pos':'balance-neg'}">${d.balance>=0?'+':''}${fmtFull(d.balance)}</div></div>
+  `;
+}
+
+function renderBar(d, mi){
+  const days = Object.keys(d.byDay).map(Number).sort((a,b)=>a-b);
+  const labels = days.map(day => `${mi===0?5:6}/${day}`);
+  const vals = days.map(day => d.byDay[day]);
+  const bgColors = vals.map(v => v >= 200000 ? '#E24B4A' : v >= 100000 ? '#EF9F27' : '#378ADD');
+  const ctx = document.getElementById('bc').getContext('2d');
+  if(barC) barC.destroy();
+  barC = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ label:'지출', data:vals, backgroundColor:bgColors, borderRadius:4 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend:{display:false}, tooltip:{callbacks:{label:c=>' '+fmtFull(c.raw)}} },
+      scales: {
+        x: { grid:{display:false}, ticks:{font:{size:11}, autoSkip:false, maxRotation:45} },
+        y: { grid:{color:'rgba(0,0,0,0.05)'}, ticks:{font:{size:11}, callback:v=>Math.round(v/10000)+'만'} }
+      }
+    }
+  });
+}
+
+function renderDonut(d){
+  const cats = Object.entries(d.byCat).sort((a,b)=>b[1]-a[1]);
+  const total = cats.reduce((s,c)=>s+c[1],0);
+  const ctx = document.getElementById('dc').getContext('2d');
+  if(donutC) donutC.destroy();
+  donutC = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: cats.map(c=>c[0]),
+      datasets: [{ data:cats.map(c=>c[1]), backgroundColor:cats.map(c=>COLORS[c[0]]||'#999'), borderWidth:0, hoverOffset:4 }]
+    },
+    options: { responsive:true, maintainAspectRatio:false, cutout:'62%', plugins:{legend:{display:false}} }
+  });
+  document.getElementById('catlist').innerHTML = cats.map(([k,v])=>`
+    <div class="cat-item">
+      <span class="cat-name"><span class="dot" style="background:${COLORS[k]||'#999'}"></span>${k}</span>
+      <span class="cat-val">${fmtShort(v)}<span class="cat-pct">${Math.round(v/total*100)}%</span></span>
+    </div>`).join('');
+}
+
+function renderTxns(rows, mi){
+  const month = mi===0 ? 5 : 6;
+  document.getElementById('txn-count').textContent = `(${rows.length}건)`;
+  document.getElementById('txn-body').innerHTML = [...rows].reverse().map(r => {
+    const day = parseInt(r[0].split('-')[2]);
+    const isIncome = r[1]==='수입';
+    const isSaving = r[2]==='저축';
+    const cls = isIncome ? 'type-income' : isSaving ? 'type-saving' : 'type-expense';
+    const sign = isIncome ? '+' : '-';
+    return `<tr>
+      <td style="color:#aaa">${month}/${day}</td>
+      <td><span class="${cls}">${r[1]}</span></td>
+      <td>${r[2]}</td>
+      <td>${r[3]}</td>
+      <td style="text-align:right" class="${cls}">${sign}${fmtFull(r[4])}</td>
+      <td style="color:#aaa">${r[5]}</td>
+    </tr>`;
+  }).join('');
+}
+
+function sel(mi, btn){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  btn.classList.add('on');
+  const rows = getRows(mi);
+  const d = compute(rows);
+  renderCards(d, mi);
+  renderBar(d, mi);
+  renderDonut(d);
+  renderTxns(rows, mi);
+}
+
+// Initial render
+const r0 = getRows(0), d0 = compute(r0);
+renderCards(d0, 0);
+renderBar(d0, 0);
+renderDonut(d0);
+renderTxns(r0, 0);
+</script>
+</body>
+</html>
